@@ -1,23 +1,23 @@
 require 'socket'
 
 class Server
-  def initialize(socket_address, socket_port)
-    @server_socket = TCPServer.open(socket_port, socket_address)
+  def initialize(address, port)
+    @server = TCPServer.open(port, address)
 
-    @connections_details = Hash.new
-    @connected_clients = Hash.new
+    @connection = Hash.new
+    @clients_connected = Hash.new
 
-    @connections_details[:server] = @server_socket
-    @connections_details[:clients] = @connected_clients
+    @connection[:server] = @server
+    @connection[:clients] = @clients_connected
 
-    puts 'Started server.........'
+    puts "Starting server on port #{port}..."
     run
 
   end
 
   def run
     loop{
-      client_connection = @server_socket.accept
+      client_connection = @server.accept
       Thread.start(client_connection) do |conn| # open thread for each accepted connection
       conn_type = conn.gets.chomp
       username = ""
@@ -39,27 +39,27 @@ class Server
         conn.kill self
       end
 
-      if(@connections_details[:clients][username] != nil) # double checking avoiding connection if user exits
+      if @connection[:clients][username] != nil # double checking avoiding connection if user exits
          conn.puts "This username already exist"
          conn.puts "quit"
          conn.kill self
       end
 
       puts "Connection established #{username} => #{conn}"
-      @connections_details[:clients][username] = conn
+      @connection[:clients][username] = conn
       conn.puts "Connection established successfully #{username} => #{conn}, you may continue with chatting....."
 
-      establish_chatting(username, conn) # allow chatting
+      start_chatting(username, conn) # allow chatting
       end
     }.join
   end
 
-  def establish_chatting(username, connection)
+  def start_chatting(username, connection)
     loop do
       message = connection.gets.chomp
-      puts @connections_details[:clients]
-      (@connections_details[:clients]).keys.each do |client|
-        @connections_details[:clients][client].puts "#{username} : #{message}"
+      puts @connection[:clients]
+      (@connection[:clients]).keys.each do |client|
+        @connection[:clients][client].puts "#{username} : #{message}"
       end
     end
   end

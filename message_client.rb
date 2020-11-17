@@ -3,11 +3,11 @@ require 'socket'
 class Client
   def initialize(socket)
     @socket = socket
-    @request_object = send_request
-    @response_object = listen_response
+    @request = send_request
+    @response = listen_response
 
-    @request_object.join # will send the request to server
-    @response_object.join # will receive response from server
+    @request.join # will send the request to server
+    @response.join # will receive response from server
   end
 
   def send_request
