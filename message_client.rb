@@ -21,7 +21,6 @@ class Client
       end
     rescue IOError => e
       puts e.message
-      # e.backtrace
       @socket.close
     end
 
@@ -40,7 +39,6 @@ class Client
       end
     rescue IOError => e
       puts e.message
-      # e.backtrace
       @socket.close
     end
   end

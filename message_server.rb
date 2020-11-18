@@ -39,36 +39,48 @@ class Server
         # TODO: Handle this res error better
         if res
           conn.puts "Error Occurred (Most likely this username already exists)"
-          conn.kill self
+          conn.puts "quit"
+          conn.close
         end
       elsif conn_type == 'login'
         conn.puts "Please Enter your Username: "
         username = conn.gets.chomp
         db_user = @db.query("SELECT * FROM users WHERE name = '#{username}'")
         unless db_user.first
-          conn.puts "Error Occurred (Most likely this username doesn't exists. Please disconnect and try again!)"
+          conn.puts "Error Occurred (Most likely this username doesn't exists.)"
+          conn.puts "quit"
+          conn.close
         end
         conn.puts "Please Enter your Password:"
         password = conn.gets.chomp
         unsalted_password = Password.new(db_user.first['password'])
         if unsalted_password != password
           conn.puts "Password is Incorrect!"
-          conn.kill self
+          conn.puts "quit"
+          conn.close
         end
       else
         conn.puts "Neither option was selected! Disconnecting!"
-        conn.kill self
+        conn.puts "quit"
+        conn.close
       end
 
-      if @connection[:clients][username] != nil # double checking avoiding connection if user exits
+      if @connection[:clients][username] != nil # double checking avoiding connection if user exists (Can't be logged in two places)
          conn.puts "This username already exist"
          conn.puts "quit"
-         conn.kill self
+         conn.close
       end
 
       puts "Connection established #{username} => #{conn}"
       @connection[:clients][username] = conn
-      conn.puts "Connection established successfully #{username} => #{conn}, you may continue with chatting....."
+      conn.puts "Connection established successfully #{username} => #{conn}, you may continue with chatting (Type 'leave' to leave the chat)....."
+
+      user_list = []
+      (@connection[:clients]).keys.each do |client|
+        @connection[:clients][client].puts "#{username} has joined the chat."
+        user_list.push(client)
+      end
+      conn.puts "Active Users: #{user_list.join(", ")}"
 
       start_chatting(username, conn) # allow chatting
       end
@@ -78,9 +90,17 @@ class Server
   def start_chatting(username, connection)
     loop do
       message = connection.gets.chomp
+      if message == "leave"
+        @connection[:clients].delete(username)
+        (@connection[:clients]).keys.each do |client|
+          @connection[:clients][client].puts "#{username} has left the chat."
+        end
+        connection.puts "quit"
+        connection.close
+      end
       puts @connection[:clients]
       (@connection[:clients]).keys.each do |client|
-        @connection[:clients][client].puts "#{username} : #{message}"
+        @connection[:clients][client].puts "#{username}: #{message}"
       end
     end
   end
