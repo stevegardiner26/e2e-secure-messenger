@@ -1,14 +1,21 @@
 require 'socket'
+require 'mysql2'
+require 'bcrypt'
 
 class Server
+  include BCrypt
+
   def initialize(address, port)
-    @server = TCPServer.open(port, address)
+    @server = TCPServer.open(address, port)
 
     @connection = Hash.new
     @clients_connected = Hash.new
 
     @connection[:server] = @server
     @connection[:clients] = @clients_connected
+
+    @db = Mysql2::Client.new(host: 'localhost', username: 'messenger', password: 'dev', database: 'secure_messenger')
+    @db.query('CREATE TABLE IF NOT EXISTS users(name VARCHAR(255) PRIMARY KEY, password TEXT)ENGINE=INNODB;')
 
     puts "Starting server on port #{port}..."
     run
@@ -27,13 +34,27 @@ class Server
         username = conn.gets.chomp
         conn.puts "Please Enter a Password:"
         password = conn.gets.chomp
-        # TODO: Salt Password and enter this data into mysql database
+        salted_pass = Password.create(password)
+        res = @db.query("INSERT INTO users (name, password) VALUES ('#{username}', '#{salted_pass}')")
+        # TODO: Handle this res error better
+        if res
+          conn.puts "Error Occurred (Most likely this username already exists)"
+          conn.kill self
+        end
       elsif conn_type == 'login'
         conn.puts "Please Enter your Username: "
         username = conn.gets.chomp
+        db_user = @db.query("SELECT * FROM users WHERE name = '#{username}'")
+        unless db_user.first
+          conn.puts "Error Occurred (Most likely this username doesn't exists. Please disconnect and try again!)"
+        end
         conn.puts "Please Enter your Password:"
         password = conn.gets.chomp
-        # TODO: Salt Password and check this data against the mysql database
+        unsalted_password = Password.new(db_user.first['password'])
+        if unsalted_password != password
+          conn.puts "Password is Incorrect!"
+          conn.kill self
+        end
       else
         conn.puts "Neither option was selected! Disconnecting!"
         conn.kill self
@@ -66,4 +87,4 @@ class Server
 end
 
 
-Server.new( 2000, "localhost" )
+Server.new( "localhost", 2000)
