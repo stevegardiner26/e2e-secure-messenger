@@ -1,6 +1,7 @@
 require 'socket'
 require 'mysql2'
 require 'bcrypt'
+require 'openssl'
 
 class Server
   include BCrypt
@@ -23,10 +24,29 @@ class Server
     # Create the users table if it doesn't exist already
     @db.query('CREATE TABLE IF NOT EXISTS users(name VARCHAR(255) PRIMARY KEY, password TEXT)ENGINE=INNODB;')
 
+    @key = 'oLt7Dg2g51C8TMRXiR81Ue3k9G1P2kX8'
+
     # Start up the server to listen for clients
     puts "Starting server on port #{port}..."
     run
 
+  end
+
+  def send_data(conn, message)
+    cipher = OpenSSL::Cipher.new('AES-256-CBC').encrypt
+    cipher.key = (Digest::SHA1.hexdigest @key)[0..31]
+    s = cipher.update(message) + cipher.final
+
+    conn.puts s.unpack('H*')[0].upcase
+  end
+
+  def read_data(conn)
+    response = conn.gets.chomp
+    cipher = OpenSSL::Cipher.new('AES-256-CBC').decrypt
+    cipher.key = (Digest::SHA1.hexdigest @key)[0..31]
+    s = [response].pack("H*").unpack("C*").pack("c*")
+
+    cipher.update(s) + cipher.final
   end
 
   def run
@@ -37,17 +57,17 @@ class Server
       # Dedicate a thread to this specific accepted connection
       Thread.start(client_connection) do |conn|
         # Get the first message from the client which should be either 'register' or 'login'
-        conn_type = conn.gets.chomp
+        conn_type = read_data(conn)
         username = ""
         # Let the client know we are proceeding and what we are proceeding with
-        conn.puts "Starting #{conn_type} process..."
+        send_data(conn,"Starting #{conn_type} process...")
         if conn_type == 'register'
           # If the client is registering we prompt them for a username and await an entry from the client
-          conn.puts "Please Enter a Username:"
-          username = conn.gets.chomp
+          send_data(conn, "Please Enter a Username:")
+          username = read_data(conn)
           # After receiving an input for the username we prompt the client for a password and await an entry
-          conn.puts "Please Enter a Password:"
-          password = conn.gets.chomp
+          send_data(conn, "Please Enter a Password:")
+          password = read_data(conn)
           # Use bcrypt to salt the password with a one way hash
           salted_pass = Password.create(password)
           # Insert the user and the salted password into the database
@@ -55,46 +75,46 @@ class Server
           # TODO: Handle this res error better
           if res
             # If an error returns we do not let the client proceed any farther
-            conn.puts "Error Occurred (Most likely this username already exists)"
-            conn.puts "quit"
+            send_data(conn, "Error Occurred (Most likely this username already exists)")
+            send_data(conn, "quit")
             conn.close
           end
         elsif conn_type == 'login'
           # If the client is logging in we prompt them for their username and await their input
-          conn.puts "Please Enter your Username: "
-          username = conn.gets.chomp
+          send_data(conn, "Please Enter your Username: ")
+          username = read_data(conn)
           # Search the database for a user with the same name as provided by the client
           db_user = @db.query("SELECT * FROM users WHERE name = '#{username}'")
           unless db_user.first
             # If we cannot find a user within the database we reject the client and close the connection
-            conn.puts "Error Occurred (Most likely this username doesn't exists.)"
-            conn.puts "quit"
+            send_data(conn, "Error Occurred (Most likely this username doesn't exists.)")
+            send_data(conn, "quit")
             conn.close
           end
           # If we got to this point we assume the user exists because it does, and we prompt for a password
           # We then wait for the user to enter something for the password
-          conn.puts "Please Enter your Password:"
-          password = conn.gets.chomp
+          send_data(conn, "Please Enter your Password:")
+          password = read_data(conn)
           # Fetch the password from the database entry and use bcrypt to make it comparable to the string entered
           # by the client
           unsalted_password = Password.new(db_user.first['password'])
           if unsalted_password != password
             # If the passwords do not match up then we prevent the user from accessing the server
-            conn.puts "Password is Incorrect!"
-            conn.puts "quit"
+            send_data(conn, "Password is Incorrect!")
+            send_data(conn, "quit")
             conn.close
           end
         else
           # This will fire if neither 'register' or 'login' was entered on the clients initial connection
-          conn.puts "Neither option was selected! Disconnecting!"
-          conn.puts "quit"
+          send_data(conn, "Neither option was selected! Disconnecting!")
+          send_data(conn, "quit")
           conn.close
         end
 
         if @connection[:clients][username] != nil
           # Double checking avoiding connection if user exists (Can't be logged in two places)
-           conn.puts "This username already exist"
-           conn.puts "quit"
+           send_data(conn, "This username already exist")
+           send_data(conn, "quit")
            conn.close
         end
 
@@ -103,15 +123,15 @@ class Server
         # Add the current connection to the active clients list to keep track of them
         @connection[:clients][username] = conn
         # Let the user know that they have passed authentication
-        conn.puts "Connection established successfully #{username} => #{conn}, you may continue with chatting (Type 'leave' to leave the chat)....."
+        send_data(conn, "Connection established successfully #{username} => #{conn}, you may continue with chatting (Type 'leave' to leave the chat).....")
 
         # List out the active users in the chat room for the current client connection
         user_list = []
         (@connection[:clients]).keys.each do |client|
-          @connection[:clients][client].puts "#{username} has joined the chat."
+          send_data(@connection[:clients][client], "#{username} has joined the chat.")
           user_list.push(client)
         end
-        conn.puts "Active Users: #{user_list.join(", ")}"
+        send_data(conn, "Active Users: #{user_list.join(", ")}")
 
         start_chatting(username, conn) # allow chatting
       end
@@ -127,15 +147,15 @@ class Server
         # the rest of the clients are made aware that the user left and the connection is closed
         @connection[:clients].delete(username)
         (@connection[:clients]).keys.each do |client|
-          @connection[:clients][client].puts "#{username} has left the chat."
+          send_data(@connection[:clients][client], "#{username} has left the chat.")
         end
-        connection.puts "quit"
+        send_data(connection, "quit")
         connection.close
       end
       puts @connection[:clients]
       # Here is where we display the clients message to all other clients
       (@connection[:clients]).keys.each do |client|
-        @connection[:clients][client].puts "#{username}: #{message}"
+        @connection[:clients][client].puts "#{message}"
       end
     end
   end
