@@ -1,5 +1,6 @@
 require 'socket'
 require 'openssl'
+require 'base64'
 
 
 class Client
@@ -31,13 +32,19 @@ class Client
             cipher_secret.key = (Digest::SHA1.hexdigest @secret_key)[0..31]
             s = cipher_secret.update(message) + cipher_secret.final
 
-            message = s.unpack('H*')[0].upcase
+            res = s.unpack('H*')[0].upcase
+          else
+            public_key_file = 'public_key.pem'
+            public_key = OpenSSL::PKey::RSA.new(File.read(public_key_file))
+            res = Base64.encode64(public_key.public_encrypt(message))
+            res = res.split("\n").join("\\n")
           end
-          cipher = OpenSSL::Cipher.new('AES-256-CBC').encrypt
-          cipher.key = (Digest::SHA1.hexdigest @key)[0..31]
-          s = cipher.update(message) + cipher.final
 
-          res = s.unpack('H*')[0].upcase
+          # cipher = OpenSSL::Cipher.new('AES-256-CBC').encrypt
+          # cipher.key = (Digest::SHA1.hexdigest @key)[0..31]
+          # s = cipher.update(message) + cipher.final
+          #
+          # res = s.unpack('H*')[0].upcase
           @socket.puts res
         end
       end
@@ -55,22 +62,21 @@ class Client
           # Read any puts response's from the server
           response = @socket.gets.chomp
 
-          # Display the responses to the end user
-          cipher = OpenSSL::Cipher.new('AES-256-CBC').decrypt
-          cipher.key = (Digest::SHA1.hexdigest @key)[0..31]
-          s = [response].pack("H*").unpack("C*").pack("c*")
-
-          decrypted = cipher.update(s) + cipher.final
-
           if @messaging
             cipher_secret = OpenSSL::Cipher.new('AES-256-CBC').decrypt
             cipher_secret.key = (Digest::SHA1.hexdigest @secret_key)[0..31]
-            s = [decrypted].pack("H*").unpack("C*").pack("c*")
+            s = [response].pack("H*").unpack("C*").pack("c*")
 
             decrypted = cipher_secret.update(s) + cipher_secret.final
             puts "Other User CypherText: #{response}"
             puts "Other User: #{decrypted}"
           else
+            # Display the responses to the end user
+            cipher = OpenSSL::Cipher.new('AES-256-CBC').decrypt
+            cipher.key = (Digest::SHA1.hexdigest @key)[0..31]
+            s = [response].pack("H*").unpack("C*").pack("c*")
+
+            decrypted = cipher.update(s) + cipher.final
             puts "#{decrypted}"
           end
 

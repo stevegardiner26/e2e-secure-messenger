@@ -2,6 +2,7 @@ require 'socket'
 require 'mysql2'
 require 'bcrypt'
 require 'openssl'
+require 'base64'
 
 class Server
   include BCrypt
@@ -41,12 +42,17 @@ class Server
   end
 
   def read_data(conn)
-    response = conn.gets.chomp
-    cipher = OpenSSL::Cipher.new('AES-256-CBC').decrypt
-    cipher.key = (Digest::SHA1.hexdigest @key)[0..31]
-    s = [response].pack("H*").unpack("C*").pack("c*")
-
-    cipher.update(s) + cipher.final
+    response = conn.gets
+    response = response.split("\\n").join("\n")
+    private_key_file = 'private_key.pem'
+    private_key = OpenSSL::PKey::RSA.new(File.read(private_key_file))
+    string = private_key.private_decrypt(Base64.decode64(response))
+    string
+    # cipher = OpenSSL::Cipher.new('AES-256-CBC').decrypt
+    # cipher.key = (Digest::SHA1.hexdigest @key)[0..31]
+    # s = [response].pack("H*").unpack("C*").pack("c*")
+    #
+    # cipher.update(s) + cipher.final
   end
 
   def run
