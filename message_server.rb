@@ -123,22 +123,28 @@ class Server
         # Add the current connection to the active clients list to keep track of them
         @connection[:clients][username] = conn
         # Let the user know that they have passed authentication
+
+        send_data(conn, "What is the name of the user you are trying to contact?")
+        dest_username = read_data(conn)
+
         send_data(conn, "Connection established successfully #{username} => #{conn}, you may continue with chatting (Type 'leave' to leave the chat).....")
 
         # List out the active users in the chat room for the current client connection
         user_list = []
         (@connection[:clients]).keys.each do |client|
-          send_data(@connection[:clients][client], "#{username} has joined the chat.")
+          # send_data(@connection[:clients][client], "#{username} has joined the chat.")
           user_list.push(client)
         end
         send_data(conn, "Active Users: #{user_list.join(", ")}")
 
-        start_chatting(username, conn) # allow chatting
+        send_data(conn, "messaging_now")
+
+        start_chatting(username, conn, dest_username) # allow chatting
       end
     }.join
   end
 
-  def start_chatting(username, connection)
+  def start_chatting(username, connection, dest_username)
     loop do
       # Fetch a message from the client
       message = connection.gets.chomp
@@ -153,9 +159,12 @@ class Server
         connection.close
       end
       puts @connection[:clients]
+      puts "#{username}: #{message}"
       # Here is where we display the clients message to all other clients
       (@connection[:clients]).keys.each do |client|
-        @connection[:clients][client].puts "#{message}"
+        if client == dest_username
+          @connection[:clients][client].puts "#{message}"
+        end
       end
     end
   end

@@ -19,6 +19,7 @@ After cloning the repository and cd into the repo make sure you have these gems 
     $ gem install socket
     $ gem install mysql2
     $ gem install bcrypt
+    $ gem install openssl
 
 In one terminal run the server file:
 
